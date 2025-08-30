@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "Backend for FreshConnect - Street Vendor Supply Chain Platform",
   "main": "server.js",
+  "engines": {
+    "node": "18.x"
+  },
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js"
