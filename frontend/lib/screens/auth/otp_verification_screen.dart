@@ -13,12 +13,17 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
   bool _loading = false;
   String? _error;
   late final String phone;
+  bool _initialized = false; // <-- guard flag
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
-    phone = (args?['phone'] ?? '').toString();
+    if (!_initialized) {
+      final args =
+          ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+      phone = (args?['phone'] ?? '').toString();
+      _initialized = true;
+    }
   }
 
   @override
@@ -30,24 +35,33 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
   Future<void> _verify() async {
     FocusScope.of(context).unfocus();
     final otp = _otpController.text.trim();
+
     if (phone.isEmpty || otp.isEmpty) {
       setState(() => _error = 'Missing phone or OTP');
       return;
     }
+
     setState(() {
       _loading = true;
       _error = null;
     });
+
     try {
       final res = await AuthService.instance.verifyOtp(phone, otp);
       if (!mounted) return;
+
       if (res['requiresSignup'] == true) {
-        Navigator.of(context).pushReplacementNamed('/signup', arguments: {'phone': phone, 'otp': otp});
+        Navigator.of(context).pushReplacementNamed(
+          '/signup',
+          arguments: {'phone': phone, 'otp': otp},
+        );
         return;
       }
+
       Navigator.of(context).pushReplacementNamed('/dashboard');
     } catch (e) {
-      setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
+      setState(() =>
+          _error = e.toString().replaceFirst('Exception: ', ''));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -74,12 +88,20 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
               onSubmitted: (_) => _loading ? null : _verify(),
             ),
             const SizedBox(height: 12),
-            if (_error != null) Text(_error!, style: const TextStyle(color: Colors.red)),
+            if (_error != null)
+              Text(
+                _error!,
+                style: const TextStyle(color: Colors.red),
+              ),
             const SizedBox(height: 12),
             ElevatedButton(
               onPressed: _loading ? null : _verify,
               child: _loading
-                  ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
                   : const Text('Verify'),
             ),
           ],
@@ -88,5 +110,3 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
     );
   }
 }
-
-

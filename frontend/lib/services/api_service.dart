@@ -1,4 +1,3 @@
-
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -8,7 +7,6 @@ class ApiService {
   ApiService._();
   static final ApiService instance = ApiService._();
 
-  // Use ApiConfig.baseUrl instead of hardcoded URL for proper integration
   static String get _baseUrl => ApiConfig.baseUrl;
   static const String _authHeader = 'Authorization';
   static const String _bearer = 'Bearer ';
@@ -32,8 +30,10 @@ class ApiService {
     await prefs.remove('userRole');
   }
 
+  /// ✅ FIX: Ensure all endpoints automatically get `/api` prefix
   Uri _uri(String path, [Map<String, dynamic>? query]) {
-    return Uri.parse('$_baseUrl$path').replace(
+    final normalized = path.startsWith('/api') ? path : '/api$path';
+    return Uri.parse('$_baseUrl$normalized').replace(
       queryParameters: query?.map((k, v) => MapEntry(k, '$v')),
     );
   }
@@ -129,7 +129,6 @@ class ApiService {
   }
 
   // -------------------- Auth --------------------
-  // Phone+password login → stores JWT
   Future<Map<String, dynamic>> login(String phone, String password, {bool persist = true}) async {
     final res = await http.post(
       _uri('/auth/login'),
@@ -154,34 +153,27 @@ class ApiService {
     throw _error(res, fallback: 'Failed to login');
   }
 
-  // Register new user → returns success/failure
   Future<Map<String, dynamic>> register(Map<String, dynamic> userData) async {
     final res = await http.post(
       _uri('/auth/register'),
       headers: await _headers(),
       body: jsonEncode(userData),
     );
-    if (res.statusCode == 401 || res.statusCode == 403) {
-      await clearAuth();
-      throw Exception('Unauthorized');
-    }
     final data = _decode(res);
     if ((res.statusCode == 200 || res.statusCode == 201) && data is Map<String, dynamic>) return data;
     throw _error(res, fallback: 'Failed to register');
   }
 
-  // Fetch authenticated user profile
   Future<Map<String, dynamic>> getProfile() async {
     final data = await get('/auth/profile');
     if (data is Map<String, dynamic>) return data;
     throw Exception('Invalid profile response');
   }
 
-  // Logout → clears token
   Future<void> logout() async {
     await clearAuth();
   }
-  // POST /api/auth/send-otp { phone }
+
   Future<Map<String, dynamic>> sendOtp({required String phone}) async {
     final res = await http.post(
       _uri('/auth/send-otp'),
@@ -193,7 +185,6 @@ class ApiService {
     throw _error(res, fallback: 'Failed to send OTP');
   }
 
-  // POST /api/auth/verify-otp { phone, otp }
   Future<Map<String, dynamic>> verifyOtp({required String phone, required String otp, bool persist = true}) async {
     final res = await http.post(
       _uri('/auth/verify-otp'),
@@ -208,11 +199,10 @@ class ApiService {
     throw _error(res, fallback: 'Failed to verify OTP');
   }
 
-  // POST /api/auth/signup { name, phone, role, location, otp, categories?, description? }
   Future<Map<String, dynamic>> signup({
     required String name,
     required String phone,
-    required String role, // 'vendor' | 'supplier'
+    required String role,
     required String location,
     required String otp,
     List<String>? categories,
@@ -241,8 +231,7 @@ class ApiService {
     throw _error(res, fallback: 'Failed to signup');
   }
 
-  // -------------------- Suppliers (auth) --------------------
-  // GET /api/suppliers?location=&category=
+  // -------------------- Suppliers --------------------
   Future<Map<String, dynamic>> getSuppliers({String? location, String? category}) async {
     final res = await http.get(
       _uri('/suppliers', {
@@ -256,7 +245,6 @@ class ApiService {
     throw _error(res, fallback: 'Failed to fetch suppliers');
   }
 
-  // GET /api/suppliers/:id
   Future<Map<String, dynamic>> getSupplierById(String id) async {
     final res = await http.get(_uri('/suppliers/$id'), headers: await _headers(withAuth: true));
     final data = _decode(res);
@@ -264,7 +252,6 @@ class ApiService {
     throw _error(res, fallback: 'Failed to fetch supplier');
   }
 
-  // PUT /api/suppliers/profile { categories?, description?, deliveryTime? }
   Future<Map<String, dynamic>> updateSupplierProfile({
     List<String>? categories,
     String? description,
@@ -285,8 +272,7 @@ class ApiService {
     throw _error(res, fallback: 'Failed to update profile');
   }
 
-  // -------------------- Messages (auth) --------------------
-  // GET /api/messages/conversations
+  // -------------------- Messages --------------------
   Future<Map<String, dynamic>> getConversations() async {
     final res = await http.get(_uri('/messages/conversations'), headers: await _headers(withAuth: true));
     final data = _decode(res);
@@ -294,7 +280,6 @@ class ApiService {
     throw _error(res, fallback: 'Failed to fetch conversations');
   }
 
-  // GET /api/messages/:u1/:u2
   Future<Map<String, dynamic>> getConversation({required String userId1, required String userId2}) async {
     final res = await http.get(_uri('/messages/$userId1/$userId2'), headers: await _headers(withAuth: true));
     final data = _decode(res);
@@ -302,7 +287,6 @@ class ApiService {
     throw _error(res, fallback: 'Failed to fetch messages');
   }
 
-  // POST /api/messages { receiverId, content, orderDetails? }
   Future<Map<String, dynamic>> sendMessage({
     required String receiverId,
     required String content,

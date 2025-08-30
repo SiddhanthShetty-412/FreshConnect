@@ -13,19 +13,25 @@ class _SignupScreenState extends State<SignupScreen> {
   final TextEditingController _locationController = TextEditingController();
   final TextEditingController _categoriesController = TextEditingController();
   final TextEditingController _descriptionController = TextEditingController();
-  final TextEditingController _deliveryTimeController = TextEditingController(text: '2-4 hours');
+  final TextEditingController _deliveryTimeController =
+      TextEditingController(text: '2-4 hours');
 
   bool _loading = false;
   String? _error;
   late final String phone;
   late final String otp;
+  bool _initialized = false; // <-- added guard flag
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
-    phone = (args?['phone'] ?? '').toString();
-    otp = (args?['otp'] ?? '').toString();
+    if (!_initialized) {
+      final args =
+          ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+      phone = (args?['phone'] ?? '').toString();
+      otp = (args?['otp'] ?? '').toString();
+      _initialized = true;
+    }
   }
 
   @override
@@ -40,6 +46,7 @@ class _SignupScreenState extends State<SignupScreen> {
 
   Future<void> _signup() async {
     FocusScope.of(context).unfocus();
+
     final name = _nameController.text.trim();
     final location = _locationController.text.trim();
     final categories = _categoriesController.text
@@ -54,10 +61,12 @@ class _SignupScreenState extends State<SignupScreen> {
       setState(() => _error = 'Name and location are required');
       return;
     }
+
     setState(() {
       _loading = true;
       _error = null;
     });
+
     try {
       final res = await AuthService.instance.signup({
         'name': name,
@@ -69,14 +78,18 @@ class _SignupScreenState extends State<SignupScreen> {
         'description': description,
         'deliveryTime': deliveryTime,
       });
+
       if (!mounted) return;
+
       if (res['success'] == true) {
         Navigator.of(context).pushReplacementNamed('/dashboard');
       } else {
-        setState(() => _error = (res['message'] ?? 'Signup failed').toString());
+        setState(() =>
+            _error = (res['message'] ?? 'Signup failed').toString());
       }
     } catch (e) {
-      setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
+      setState(() =>
+          _error = e.toString().replaceFirst('Exception: ', ''));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -134,12 +147,20 @@ class _SignupScreenState extends State<SignupScreen> {
               ),
             ),
             const SizedBox(height: 12),
-            if (_error != null) Text(_error!, style: const TextStyle(color: Colors.red)),
+            if (_error != null)
+              Text(
+                _error!,
+                style: const TextStyle(color: Colors.red),
+              ),
             const SizedBox(height: 12),
             ElevatedButton(
               onPressed: _loading ? null : _signup,
               child: _loading
-                  ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
                   : const Text('Sign up'),
             ),
           ],
@@ -148,5 +169,3 @@ class _SignupScreenState extends State<SignupScreen> {
     );
   }
 }
-
-
