@@ -26,7 +26,7 @@ const corsOptions = {
       'http://127.0.0.1:8080', // Flutter web alternative
       'http://10.0.2.2:5000',  // Android emulator
       'http://192.168.1.100:5000', // Physical device (update with your IP)
-      'https://fresh-connect-ld38ltdnl-siddhanth-shettys-projects.vercel.app',
+      'https://fresh-connect-cg9stbq3j-siddhanth-shettys-projects.vercel.app',
       'https://freshconnect-2.onrender.com/' // Production
     ];
     
@@ -58,7 +58,7 @@ const io = socketIo(server, {
         'http://127.0.0.1:8080',
         'http://10.0.2.2:5000',
         'http://192.168.1.100:5000',
-        'https://fresh-connect-ld38ltdnl-siddhanth-shettys-projects.vercel.app',
+        'https://fresh-connect-cg9stbq3j-siddhanth-shettys-projects.vercel.app',
         "https://freshconnect-2.onrender.com/"
       ];
       
