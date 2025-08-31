@@ -57,7 +57,8 @@ const io = socketIo(server, {
         'http://127.0.0.1:8080',
         'http://10.0.2.2:5000',
         'http://192.168.1.100:5000',
-        'https://server-b5n53wuax-siddhanth-shettys-projects.vercel.app'
+        'https://server-b5n53wuax-siddhanth-shettys-projects.vercel.app',
+        "https://freshconnect-2.onrender.com/"
       ];
       
       if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV === 'development') {
