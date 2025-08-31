@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart';
 /// Configuration class for API endpoints
 class ApiConfig {
   /// Production backend URL (Render)
-  static const String _prodUrl = "https://freshconnect-2.onrender.com";
+  static const String _prodUrl = "https://freshconnect-2.onrender.com/api";
 
   /// Development backend URL (local)
   static const String _devUrl = "http://localhost:5000";

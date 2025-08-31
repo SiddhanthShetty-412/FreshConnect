@@ -57,7 +57,7 @@ const io = socketIo(server, {
         'http://127.0.0.1:8080',
         'http://10.0.2.2:5000',
         'http://192.168.1.100:5000',
-        'vendor-supplier-lvn98r4nj-siddhanth-shettys-projects.vercel.app',
+        'https://fresh-connect-ewprvc6ra-siddhanth-shettys-projects.vercel.app',
         "https://freshconnect-2.onrender.com/"
       ];
       
