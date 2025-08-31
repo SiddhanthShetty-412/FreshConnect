@@ -6,7 +6,7 @@ class ApiConfig {
   static const String _prodUrl = "https://freshconnect-2.onrender.com/api";
 
   /// Development backend URL (local)
-  static const String _devUrl = "http://localhost:5000";
+  static const String _devUrl = "http://localhost:5000/api";
 
   /// Get the correct base URL depending on whether running in debug or release
   static String get baseUrl {
