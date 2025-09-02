@@ -4,8 +4,8 @@ import 'package:flutter/foundation.dart';
 /// Configuration class for API endpoints with platform-specific base URLs
 class ApiConfig {
   /// Environment configuration
-  static const String _devUrl = "http://localhost:5000/api";
-  static const String _prodUrl = "https://freshconnect-2.onrender.com/api";
+  static const String _devUrl = "http://localhost:5000";
+  static const String _prodUrl = "https://server-b5n53wuax-siddhanth-shettys-projects.vercel.app";
   
   /// Base URL for API calls that automatically adapts to the current platform
   /// 

@@ -1,4 +1,5 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const Message = require('../models/Message');
 const User = require('../models/User');
 const { authenticateToken } = require('../middleware/auth');
