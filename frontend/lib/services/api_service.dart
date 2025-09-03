@@ -18,9 +18,15 @@ class ApiService {
 
   Future<void> _setAuth(String token, Map<String, dynamic> user) async {
     final prefs = await SharedPreferences.getInstance();
+    print('Saved token: ${prefs.getString('token')}');
     await prefs.setString('token', token);
     await prefs.setString('userId', user['_id']?.toString() ?? '');
     await prefs.setString('userRole', user['role']?.toString() ?? '');
+  }
+
+  Future<void> _setTokenOnly(String token) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('token', token);
   }
 
   Future<void> clearAuth() async {
@@ -43,7 +49,10 @@ class ApiService {
     if (withAuth) {
       final token = await _getToken();
       if (token != null && token.isNotEmpty) {
+        print('Attaching token: $token');
         headers[_authHeader] = _bearer + token;
+      } else {
+        print('No token stored');
       }
     }
     return headers;
@@ -185,6 +194,17 @@ class ApiService {
     throw _error(res, fallback: 'Failed to send OTP');
   }
 
+  Future<Map<String, dynamic>> checkPhone(String phone) async {
+    final res = await http.post(
+      _uri('/auth/check-phone'),
+      headers: await _headers(),
+      body: jsonEncode({'phone': phone}),
+    );
+    final data = _decode(res);
+    if (res.statusCode == 200 && data is Map<String, dynamic>) return data;
+    throw _error(res, fallback: 'Failed to check phone');
+  }
+
   Future<Map<String, dynamic>> verifyOtp({required String phone, required String otp, bool persist = true}) async {
     final res = await http.post(
       _uri('/auth/verify-otp'),
@@ -193,7 +213,14 @@ class ApiService {
     );
     final data = _decode(res);
     if (res.statusCode == 200 && data is Map<String, dynamic> && data['success'] == true) {
-      if (persist) await _setAuth(data['token'] as String, (data['user'] as Map).cast<String, dynamic>());
+      // If returning token+user (existing user), persist full auth
+      if (persist && data['token'] != null && data['user'] != null) {
+        await _setAuth(data['token'] as String, (data['user'] as Map).cast<String, dynamic>());
+      }
+      // If returning temp token for new user, persist token so we can call complete-profile
+      if (persist && data['token'] != null && (data['user'] == null || data['newUser'] == true)) {
+        await _setTokenOnly(data['token'] as String);
+      }
       return data;
     }
     throw _error(res, fallback: 'Failed to verify OTP');
@@ -305,5 +332,27 @@ class ApiService {
     final data = _decode(res);
     if (res.statusCode == 201 && data is Map<String, dynamic> && data['success'] == true) return data;
     throw _error(res, fallback: 'Failed to send message');
+  }
+
+  // -------------------- Complete Profile --------------------
+  Future<Map<String, dynamic>> completeProfile({
+    required String name,
+    required String role,
+    required String location,
+  }) async {
+    final res = await http.post(
+      _uri('/auth/complete-profile'),
+      headers: await _headers(withAuth: true),
+      body: jsonEncode({ 'name': name, 'role': role, 'location': location }),
+    );
+    final data = _decode(res);
+    if ((res.statusCode == 200 || res.statusCode == 201) && data is Map<String, dynamic> && data['success'] == true) {
+      // Persist the new token and user if provided
+      if (data['token'] != null && data['user'] != null) {
+        await _setAuth(data['token'] as String, (data['user'] as Map).cast<String, dynamic>());
+      }
+      return data;
+    }
+    throw _error(res, fallback: 'Failed to complete profile');
   }
 }

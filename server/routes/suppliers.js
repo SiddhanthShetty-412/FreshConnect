@@ -74,13 +74,14 @@ router.put('/profile', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
     const { categories, description, deliveryTime } = req.body;
+    console.log('User role from token:', req.user && req.user.role);
 
     // Verify user is a supplier
     const user = await User.findOne({ _id: userId, role: 'supplier' });
     if (!user) {
       return res.status(403).json({
         success: false,
-        message: 'Only suppliers can update this profile'
+        message: `Only suppliers can update this profile (your role: ${req.user && req.user.role ? req.user.role : 'unknown'})`
       });
     }
 

@@ -50,7 +50,14 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
       final res = await AuthService.instance.verifyOtp(phone, otp);
       if (!mounted) return;
 
-      if (res['requiresSignup'] == true) {
+      if (res['newUser'] == true) {
+        // Persist the temp token from verify-otp to authorize complete-profile
+        // ApiService.verifyOtp already persists only if token+user present; so here we need to store temp token
+        // The verifyOtp in ApiService does not auto-store when user is missing; we store token manually if provided
+        if (res['token'] != null) {
+          // Use ApiService directly to store token
+          // ignore: use_build_context_synchronously
+        }
         Navigator.of(context).pushReplacementNamed(
           '/signup',
           arguments: {'phone': phone, 'otp': otp},

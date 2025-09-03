@@ -2,8 +2,36 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const { authenticateToken } = require('../middleware/auth');
 
 const router = express.Router();
+
+// Check if phone exists
+router.post('/check-phone', async (req, res) => {
+  try {
+    const { phone } = req.body;
+
+    if (!phone || phone.length !== 10 || !/^\d{10}$/.test(phone)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide a valid 10-digit phone number'
+      });
+    }
+
+    const user = await User.findOne({ phone }).select('role');
+    if (user) {
+      return res.json({ success: true, exists: true, role: user.role });
+    }
+    return res.json({ success: true, exists: false });
+  } catch (error) {
+    console.error('Check phone error:', error);
+    res.status(500).json({ success: false, message: 'Failed to check phone' });
+  }
+});
+
+// In-memory OTP store for phones awaiting verification
+// Structure: { [phone: string]: { otpHash: string, expiresAt: Date } }
+const otpStore = new Map();
 
 // Initialize Twilio client conditionally
 let twilioClient = null;
@@ -41,27 +69,9 @@ router.post('/send-otp', async (req, res) => {
     // For development, use fixed OTP
     const actualOTP = process.env.NODE_ENV === 'development' ? '123456' : otp;
 
-    // Hash the OTP before storing
+    // Hash the OTP before storing (in-memory)
     const hashedOTP = await bcrypt.hash(actualOTP, 10);
-
-    // Find existing user or create new one
-    let user = await User.findOne({ phone });
-    
-    if (user) {
-      // Update existing user with new OTP
-      user.otp = hashedOTP;
-      user.otpExpiry = otpExpiry;
-      await user.save();
-    } else {
-      // Create new user with OTP (minimal data for now)
-      user = new User({
-        phone,
-        otp: hashedOTP,
-        otpExpiry,
-        isVerified: false
-      });
-      await user.save();
-    }
+    otpStore.set(phone, { otpHash: hashedOTP, expiresAt: otpExpiry });
 
     // Send SMS in production
     if (twilioClient && process.env.NODE_ENV === 'production') {
@@ -110,24 +120,17 @@ router.post('/verify-otp', async (req, res) => {
       });
     }
 
-    const user = await User.findOne({ phone });
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'Please request OTP first'
-      });
+    const stored = otpStore.get(phone);
+    if (!stored) {
+      return res.status(404).json({ success: false, message: 'Please request OTP first' });
     }
-
-    // Check if OTP is expired
-    if (user.otpExpiry < new Date()) {
-      return res.status(400).json({
-        success: false,
-        message: 'OTP has expired. Please request a new one.'
-      });
+    if (stored.expiresAt < new Date()) {
+      otpStore.delete(phone);
+      return res.status(400).json({ success: false, message: 'OTP has expired. Please request a new one.' });
     }
 
     // Verify OTP
-    const isOTPValid = await bcrypt.compare(otp, user.otp);
+    const isOTPValid = await bcrypt.compare(otp, stored.otpHash);
     if (!isOTPValid) {
       return res.status(400).json({
         success: false,
@@ -135,16 +138,12 @@ router.post('/verify-otp', async (req, res) => {
       });
     }
 
-    // Check if user profile is complete
-    const isProfileComplete = user.name && user.role && user.location;
+    // OTP is valid
+    const user = await User.findOne({ phone });
+    otpStore.delete(phone);
 
-    if (isProfileComplete) {
-      // Existing user with complete profile - log them in
-      await User.findByIdAndUpdate(user._id, {
-        isVerified: true,
-        $unset: { otp: 1, otpExpiry: 1 }
-      });
-
+    if (user) {
+      // Existing user -> issue normal JWT and return user
       const token = jwt.sign(
         { userId: user._id, phone: user.phone, role: user.role },
         process.env.JWT_SECRET || 'fallback_secret',
@@ -153,9 +152,7 @@ router.post('/verify-otp', async (req, res) => {
 
       return res.json({
         success: true,
-        message: 'Login successful',
         token,
-        isNewUser: false,
         user: {
           _id: user._id,
           name: user.name,
@@ -163,20 +160,20 @@ router.post('/verify-otp', async (req, res) => {
           role: user.role,
           location: user.location,
           categories: user.categories,
+          description: user.description,
           isVerified: true
-        },
-        redirectTo: user.role === 'vendor' ? '/vendor-dashboard' : '/supplier-dashboard'
-      });
-    } else {
-      // New user or incomplete profile - needs to complete signup
-      return res.json({
-        success: true,
-        message: 'OTP verified. Please complete your profile.',
-        isNewUser: true,
-        phone: user.phone,
-        redirectTo: '/complete-signup'
+        }
       });
     }
+
+    // New user -> return a temporary JWT for completing profile
+    const tempToken = jwt.sign(
+      { phone, purpose: 'complete_profile' },
+      process.env.JWT_SECRET || 'fallback_secret',
+      { expiresIn: '30m' }
+    );
+
+    return res.json({ success: true, newUser: true, token: tempToken, phone });
 
   } catch (error) {
     console.error('Verify OTP error:', error);
@@ -188,6 +185,88 @@ router.post('/verify-otp', async (req, res) => {
 });
 
 // Complete Signup (for new users)
+// Complete profile for new users (after OTP), requires token from verify-otp
+router.post('/complete-profile', authenticateToken, async (req, res) => {
+  try {
+    const { name, role, location } = req.body;
+
+    if (!name || !role || !location) {
+      return res.status(400).json({ success: false, message: 'Name, role and location are required' });
+    }
+
+    if (!['vendor', 'supplier'].includes(role)) {
+      return res.status(400).json({ success: false, message: 'Role must be either vendor or supplier' });
+    }
+
+    // If the token was a normal user token, we have userId. If it was a temp token, we may only have phone
+    let user = null;
+    if (req.user?.userId) {
+      user = await User.findById(req.user.userId);
+    }
+
+    if (!user) {
+      // Fallback: locate by phone from token payload stored by authenticateToken alternative path
+      const token = req.header('Authorization')?.replace('Bearer ', '');
+      try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret');
+        if (decoded && decoded.phone) {
+          user = await User.findOne({ phone: decoded.phone });
+        }
+      } catch (_) {}
+    }
+
+    if (!user) {
+      // Create the user now with minimal required fields
+      // Extract phone from token
+      const token = req.header('Authorization')?.replace('Bearer ', '');
+      let phoneFromToken = null;
+      try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret');
+        phoneFromToken = decoded.phone;
+      } catch (_) {}
+
+      if (!phoneFromToken) {
+        return res.status(400).json({ success: false, message: 'Invalid session for completing profile' });
+      }
+
+      user = new User({ name: name.trim(), phone: phoneFromToken, role, location: location.trim(), isVerified: true });
+      await user.save();
+    } else {
+      // Update existing placeholder user
+      user.name = name.trim();
+      user.role = role;
+      user.location = location.trim();
+      user.isVerified = true;
+      await user.save();
+    }
+
+    const token = jwt.sign(
+      { userId: user._id, phone: user.phone, role: user.role },
+      process.env.JWT_SECRET || 'fallback_secret',
+      { expiresIn: '7d' }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: 'Profile completed successfully',
+      token,
+      user: {
+        _id: user._id,
+        name: user.name,
+        phone: user.phone,
+        role: user.role,
+        location: user.location,
+        categories: user.categories,
+        description: user.description,
+        isVerified: true
+      }
+    });
+  } catch (error) {
+    console.error('Complete profile error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to complete profile' });
+  }
+});
+
 router.post('/signup', async (req, res) => {
   try {
     const { name, phone, role, location, categories, description } = req.body;
@@ -346,6 +425,37 @@ router.get('/me', async (req, res) => {
     res.status(401).json({
       success: false,
       message: 'Invalid token'
+    });
+  }
+});
+router.get('/profile', authenticateToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId).select('-otp -otpExpiry');
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      user: {
+        _id: user._id,
+        name: user.name,
+        phone: user.phone,
+        role: user.role,
+        location: user.location,
+        categories: user.categories,
+        description: user.description,
+        isVerified: user.isVerified
+      }
+    });
+  } catch (error) {
+    console.error('Get profile error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch profile'
     });
   }
 });

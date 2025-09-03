@@ -120,14 +120,14 @@ router.post('/', authenticateToken, async (req, res) => {
 router.get('/conversations', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
+    const userObjectId = new mongoose.Types.ObjectId(userId); // ✅ FIX
 
-    // Get all conversations where user is involved
     const conversations = await Message.aggregate([
       {
         $match: {
           $or: [
-            { senderId: mongoose.Types.ObjectId(userId) },
-            { receiverId: mongoose.Types.ObjectId(userId) }
+            { senderId: userObjectId },
+            { receiverId: userObjectId }
           ]
         }
       },
@@ -138,7 +138,7 @@ router.get('/conversations', authenticateToken, async (req, res) => {
         $group: {
           _id: {
             $cond: {
-              if: { $eq: ['$senderId', mongoose.Types.ObjectId(userId)] },
+              if: { $eq: ['$senderId', userObjectId] },
               then: '$receiverId',
               else: '$senderId'
             }
@@ -149,7 +149,7 @@ router.get('/conversations', authenticateToken, async (req, res) => {
               $cond: {
                 if: {
                   $and: [
-                    { $eq: ['$receiverId', mongoose.Types.ObjectId(userId)] },
+                    { $eq: ['$receiverId', userObjectId] },
                     { $eq: ['$isRead', false] }
                   ]
                 },
@@ -168,9 +168,7 @@ router.get('/conversations', authenticateToken, async (req, res) => {
           as: 'user'
         }
       },
-      {
-        $unwind: '$user'
-      },
+      { $unwind: '$user' },
       {
         $project: {
           user: {
@@ -190,16 +188,10 @@ router.get('/conversations', authenticateToken, async (req, res) => {
           unreadCount: 1
         }
       },
-      {
-        $sort: { 'lastMessage.timestamp': -1 }
-      }
+      { $sort: { 'lastMessage.timestamp': -1 } }
     ]);
 
-    res.json({
-      success: true,
-      conversations
-    });
-
+    res.json({ success: true, conversations });
   } catch (error) {
     console.error('Get conversations error:', error);
     res.status(500).json({
@@ -208,5 +200,6 @@ router.get('/conversations', authenticateToken, async (req, res) => {
     });
   }
 });
+
 
 module.exports = router;
